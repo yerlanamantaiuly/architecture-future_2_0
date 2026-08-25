@@ -1,0 +1,127 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "Task1Advanced/modules/**"
+      - "Task2Advanced/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Task1Advanced/modules/**"
+      - "Task2Advanced/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Целевое окружение"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, stage, prod]
+      action:
+        description: "Действие (apply требует approval окружения GitHub)"
+        required: true
+        default: "plan"
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  WORKING_DIR: Task2Advanced/terraform
+  TF_VERSION: "1.9.8"
+
+jobs:
+  validate:
+    name: fmt / validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff Task1Advanced Task2Advanced/terraform
+
+      - name: terraform init (без backend, только провайдеры)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+
+  plan:
+    name: plan (${{ github.event.inputs.environment }})
+    needs: validate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      ENV_NAME: ${{ github.event.inputs.environment }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      YC_TOKEN: ${{ secrets.YC_TOKEN }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_STATE_ENDPOINT: ${{ secrets.TF_STATE_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: init + plan
+        run: |
+          chmod +x Task2Advanced/scripts/tf.sh
+          Task2Advanced/scripts/tf.sh plan "${ENV_NAME}"
+
+      - name: upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.ENV_NAME }}
+          path: Task2Advanced/terraform/tfplan-${{ env.ENV_NAME }}
+          if-no-files-found: error
+          retention-days: 5
+
+  apply:
+    name: apply (${{ github.event.inputs.environment }})
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      ENV_NAME: ${{ github.event.inputs.environment }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      YC_TOKEN: ${{ secrets.YC_TOKEN }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_STATE_ENDPOINT: ${{ secrets.TF_STATE_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ env.ENV_NAME }}
+          path: Task2Advanced/terraform
+
+      - name: apply saved plan
+        run: |
+          chmod +x Task2Advanced/scripts/tf.sh
+          Task2Advanced/scripts/tf.sh apply "${ENV_NAME}"

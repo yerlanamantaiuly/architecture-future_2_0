@@ -1,0 +1,50 @@
+# Материалы курса — не часть сдаваемого решения
+zadanie.txt
+potoki-dannih.png
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*~
+.idea/
+.vscode/
+*.iml
+
+# Terraform: локальный кэш и state (state только в S3/MinIO)
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+tfplan-*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Секреты, ключи, локальные переменные
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+*_sa_key.json
+authorized_key.json
+yc-key.json
+*.tfvars.backup
+secrets.auto.tfvars
+terraform.tfvars.local
+
+# Python / прочее
+__pycache__/
+*.pyc
+.venv/
+venv/
